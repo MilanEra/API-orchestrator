@@ -1,0 +1,7 @@
+.git
+.gitignore
+.dockerignore
+*.exe
+*.md
+SAVEPOINT.md
+qwen_dialog_*.html
