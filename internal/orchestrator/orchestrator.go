@@ -34,6 +34,7 @@ type Orchestrator struct {
 	mu              sync.RWMutex
 }
 
+// New creates an Orchestrator with initialized circuit breakers for configured sources.
 func New(reg *registry.Registry, configs map[string]config.SourceConfig, timeout time.Duration, c cache.Cache) *Orchestrator {
 	breakers := make(map[string]*circuitbreaker.CircuitBreaker)
 
@@ -55,6 +56,8 @@ func New(reg *registry.Registry, configs map[string]config.SourceConfig, timeout
 }
 
 // FetchMany starts one goroutine per source and waits for all results.
+// It includes a panic recovery mechanism to ensure that a failure in one
+// source's goroutine never crashes the entire server process.
 func (o *Orchestrator) FetchMany(
 	ctx context.Context,
 	names []string,
@@ -71,10 +74,26 @@ func (o *Orchestrator) FetchMany(
 		go func(sourceName string) {
 			defer wg.Done()
 
-			sourceCtx, cancel := context.WithTimeout(ctx, o.timeout)
-			defer cancel()
+			var result Result
 
-			result := o.fetchOne(sourceCtx, sourceName, params)
+			// CRITICAL: Anonymous wrapper to catch panics from fetchOne.
+			// This prevents a single bad source from killing the whole server.
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						result = Result{
+							Error:    fmt.Sprintf("internal server error (panic recovered): %v", r),
+							Duration: "0s",
+							CBState:  "unknown",
+						}
+					}
+				}()
+
+				sourceCtx, cancel := context.WithTimeout(ctx, o.timeout)
+				defer cancel()
+
+				result = o.fetchOne(sourceCtx, sourceName, params)
+			}()
 
 			mu.Lock()
 			results[sourceName] = result
@@ -94,19 +113,24 @@ func (o *Orchestrator) fetchOne(
 ) Result {
 	start := time.Now()
 
-	o.mu.RLock()
-	cb := o.circuitBreakers[name]
-	o.mu.RUnlock()
-
-	cbState := cb.State().String()
-
+	// CRITICAL FIX: Validate source existence BEFORE accessing circuit breakers
+	// to prevent nil pointer dereference panics on unknown source names.
 	source, err := o.registry.Get(name)
 	if err != nil {
 		return Result{
 			Error:    err.Error(),
 			Duration: time.Since(start).String(),
-			CBState:  cbState,
+			CBState:  "none",
 		}
+	}
+
+	o.mu.RLock()
+	cb := o.circuitBreakers[name]
+	o.mu.RUnlock()
+
+	cbState := "none"
+	if cb != nil {
+		cbState = cb.State().String()
 	}
 
 	cfg, ok := o.configs[name]
@@ -132,34 +156,45 @@ func (o *Orchestrator) fetchOne(
 		}
 	}
 
-	if err := cb.Allow(); err != nil {
-		return Result{
-			Error:    fmt.Sprintf("circuit breaker is open for source %q", name),
-			Duration: time.Since(start).String(),
-			CBState:  "open",
+	if cb != nil {
+		if err := cb.Allow(); err != nil {
+			return Result{
+				Error:    fmt.Sprintf("circuit breaker is open for source %q", name),
+				Duration: time.Since(start).String(),
+				CBState:  "open",
+			}
 		}
 	}
 
 	data, err := source.Fetch(ctx, params)
 	if err != nil {
-		cb.RecordFailure()
+		if cb != nil {
+			cb.RecordFailure()
+			cbState = cb.State().String()
+		}
 		return Result{
 			Error:    err.Error(),
 			Duration: time.Since(start).String(),
-			CBState:  cb.State().String(),
+			CBState:  cbState,
 		}
 	}
 
 	if !json.Valid(data) {
-		cb.RecordFailure()
+		if cb != nil {
+			cb.RecordFailure()
+			cbState = cb.State().String()
+		}
 		return Result{
 			Error:    "source returned invalid JSON",
 			Duration: time.Since(start).String(),
-			CBState:  cb.State().String(),
+			CBState:  cbState,
 		}
 	}
 
-	cb.RecordSuccess()
+	if cb != nil {
+		cb.RecordSuccess()
+		cbState = cb.State().String()
+	}
 
 	if cfg.CacheTTLSeconds > 0 {
 		ttl := time.Duration(cfg.CacheTTLSeconds) * time.Second
@@ -171,7 +206,7 @@ func (o *Orchestrator) fetchOne(
 		return Result{
 			Error:    fmt.Sprintf("mapping failed: %v", err),
 			Duration: time.Since(start).String(),
-			CBState:  cb.State().String(),
+			CBState:  cbState,
 		}
 	}
 
@@ -179,7 +214,7 @@ func (o *Orchestrator) fetchOne(
 		Data:      mappedData,
 		Duration:  time.Since(start).String(),
 		FromCache: false,
-		CBState:   cb.State().String(),
+		CBState:   cbState,
 	}
 }
 
