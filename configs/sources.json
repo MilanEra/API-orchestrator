@@ -1,0 +1,108 @@
+{
+  "sources": [
+    {
+      "name": "weather",
+      "url": "https://api.open-meteo.com/v1/forecast?latitude={latitude}&longitude={longitude}&current=temperature_2m,weather_code",
+      "method": "GET",
+      "headers": {
+        "Accept": "application/json"
+      },
+      "default_params": {
+        "latitude": "55.7558",
+        "longitude": "37.6173"
+      },
+      "timeout_seconds": 10,
+      "cache_ttl_seconds": 60,
+      "retry": {
+        "max_attempts": 3,
+        "initial_delay_ms": 500,
+        "max_delay_ms": 5000,
+        "retryable_status_codes": [408, 429, 500, 502, 503, 504]
+      },
+      "rate_limit": {
+        "requests_per_second": 2
+      },
+      "circuit_breaker": {
+        "failure_threshold": 3,
+        "success_threshold": 2,
+        "recovery_timeout_seconds": 30
+      },
+      "response_mapping": {
+        "temperature": "current.temperature_2m",
+        "weather_code": "current.weather_code",
+        "time": "current.time"
+      }
+    },
+    {
+      "name": "currency",
+      "url": "https://open.er-api.com/v6/latest/{base}",
+      "method": "GET",
+      "headers": {
+        "Accept": "application/json"
+      },
+      "default_params": {
+        "base": "USD"
+      },
+      "timeout_seconds": 10,
+      "cache_ttl_seconds": 300,
+      "retry": {
+        "max_attempts": 2,
+        "initial_delay_ms": 1000,
+        "max_delay_ms": 3000,
+        "retryable_status_codes": [408, 429, 500, 502, 503, 504]
+      },
+      "rate_limit": {
+        "requests_per_second": 1
+      },
+      "circuit_breaker": {
+        "failure_threshold": 5,
+        "success_threshold": 3,
+        "recovery_timeout_seconds": 60
+      },
+      "response_mapping": {
+        "base": "base_code",
+        "rates": "rates",
+        "last_update": "time_last_update_utc"
+      }
+    },
+    {
+      "name": "github",
+      "url": "https://api.github.com/repos/{owner}/{repo}",
+      "method": "GET",
+      "headers": {
+        "Accept": "application/vnd.github.v3+json",
+        "User-Agent": "api-orchestrator"
+      },
+      "default_params": {
+        "owner": "golang",
+        "repo": "go"
+      },
+      "timeout_seconds": 10,
+      "cache_ttl_seconds": 120,
+      "retry": {
+        "max_attempts": 2,
+        "initial_delay_ms": 1000,
+        "max_delay_ms": 5000,
+        "retryable_status_codes": [403, 429, 500, 502, 503]
+      },
+      "rate_limit": {
+        "requests_per_second": 1
+      },
+      "circuit_breaker": {
+        "failure_threshold": 3,
+        "success_threshold": 2,
+        "recovery_timeout_seconds": 30
+      },
+      "response_mapping": {
+        "name": "full_name",
+        "description": "description",
+        "stars": "stargazers_count",
+        "forks": "forks_count",
+        "language": "language",
+        "open_issues": "open_issues_count",
+        "created_at": "created_at",
+        "license": "license.spdx_id"
+      }
+    }
+  ]
+}

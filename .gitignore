@@ -1,0 +1,17 @@
+# Binaries and build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Environment secrets
+.env
+
+# Personal working files (not part of the product)
+SAVEPOINT.md
+qwen_dialog_*.html
+chat-export-*.json
+*.dll

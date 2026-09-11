@@ -1,0 +1,18 @@
+{
+  "targets": [
+    {
+      "name": "weather_log",
+      "source": "weather",
+      "publisher": "log",
+      "interval_seconds": 30,
+      "template": "🌤 Weather now: {{.temperature}}°C, weather code {{.weather_code}}, time {{.time}}"
+    },
+    {
+      "name": "github_log",
+      "source": "github",
+      "publisher": "log",
+      "interval_seconds": 60,
+      "template": "⭐ {{.name}}: {{.stars}} stars, {{.forks}} forks, open issues: {{.open_issues}}"
+    }
+  ]
+}
