@@ -265,7 +265,13 @@ func main() {
 		})
 	})
 
+		// Read the PORT environment variable (required by cloud providers like Render/Fly.io).
+	// If not set, default to 8080 for local development.
 	addr := ":8080"
+	if port := os.Getenv("PORT"); port != "" {
+		addr = ":" + port
+	}
+
 	srv := &http.Server{
 		Addr:    addr,
 		Handler: mux,
